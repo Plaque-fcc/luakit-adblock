@@ -96,12 +96,16 @@ parse_abpfilterlist = function (filename)
         -- Check for exceptions (whitelist)
         elseif line:match("^@@") then
             pat = abp_to_pattern(string.sub(line, 3))
-            if pat then table.insert(white, pat) end
+            if pat and pat ~= "^http://" then
+                table.insert(white, pat)
+            end
 
         -- Add everything else to blacklist
         else
             pat = abp_to_pattern(line)
-            if pat then table.insert(black, pat) end
+            if pat and pat ~= "^http:" then
+                table.insert(black, pat)
+            end
         end
 	end
 
@@ -136,6 +140,7 @@ match = function (uri, signame)
     for _, pattern in ipairs(whitelist) do
         if string.match(uri, pattern) then
             info("adblock: allowing %q as pattern %q matched to uri %s", signame, pattern, uri)
+            io.stdout:write ("Allowed " .. signame .. " as pattern " .. pattern .. " matched to uri " .. uri .. "\n")
             return true
         end
     end
@@ -144,6 +149,7 @@ match = function (uri, signame)
     for _, pattern in ipairs(blacklist) do
         if string.match(uri, pattern) then
             info("adblock: blocking %q as pattern %q matched to uri %s", signame, pattern, uri)
+            io.stdout:write ("Blocked " .. signame .. " as pattern " .. pattern .. " matched to uri " .. uri .. "\n")
             return false
         end
     end

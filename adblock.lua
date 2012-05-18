@@ -42,9 +42,13 @@ for line in adcat:lines() do
     table.insert(filterfiles, line )
 end
 
-out:write( "Found " .. table.maxn(filterfiles) .. " rules lists.\n" )
+if table.maxn(filterfiles) > 0 then
+    out:write( "Found " .. table.maxn(filterfiles) .. " rules lists.\n" )
+else
+    out:write( "Fallback to single easylist.txt\n" )
+    filterfiles = { capi.luakit.data_dir .. "/easylist.txt" }
+end
 
---local filterfiles = { capi.luakit.data_dir .. "/easylist.txt" }
 -- String patterns to filter URI's with
 local whitelist = {}
 local blacklist = {}

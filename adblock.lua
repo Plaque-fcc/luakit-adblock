@@ -20,13 +20,31 @@ local tostring = tostring
 local webview = webview
 local lousy = require "lousy"
 local capi = { luakit = luakit }
+local out = io.stdout
 
 module("adblock")
 
 --- Module global variables
 local enabled = true
 -- Adblock Plus compatible filter lists
-local filterfiles = { capi.luakit.data_dir .. "/easylist.txt" }
+local adcat, why = io.popen("ls " .. capi.luakit.data_dir .. "/adblock/*.txt", "r")
+
+if not adcat then
+    out:write(why .. "\n")
+else
+    out:write("Ok.\n")
+end
+
+local filterfiles = {}
+
+for line in adcat:lines() do
+    out:write("Found adblock list: " .. line .. "\n")
+    table.insert(filterfiles, line )
+end
+
+out:write( "Found " .. table.maxn(filterfiles) .. " rules lists.\n" )
+
+--local filterfiles = { capi.luakit.data_dir .. "/easylist.txt" }
 -- String patterns to filter URI's with
 local whitelist = {}
 local blacklist = {}
@@ -107,7 +125,7 @@ parse_abpfilterlist = function (filename)
                 table.insert(black, pat)
             end
         end
-	end
+    end
 
     return white, black
 end
@@ -140,7 +158,7 @@ match = function (uri, signame)
     for _, pattern in ipairs(whitelist) do
         if string.match(uri, pattern) then
             info("adblock: allowing %q as pattern %q matched to uri %s", signame, pattern, uri)
-            io.stdout:write ("Allowed " .. signame .. " as pattern " .. pattern .. " matched to uri " .. uri .. "\n")
+            out:write ("Allowed " .. signame .. " as pattern " .. pattern .. " matched to uri " .. uri .. "\n")
             return true
         end
     end
@@ -149,7 +167,7 @@ match = function (uri, signame)
     for _, pattern in ipairs(blacklist) do
         if string.match(uri, pattern) then
             info("adblock: blocking %q as pattern %q matched to uri %s", signame, pattern, uri)
-            io.stdout:write ("Blocked " .. signame .. " as pattern " .. pattern .. " matched to uri " .. uri .. "\n")
+            out:write ("Blocked " .. signame .. " as pattern " .. pattern .. " matched to uri " .. uri .. "\n")
             return false
         end
     end

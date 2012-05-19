@@ -3,14 +3,16 @@
 
 [[ -d /tmp ]] && cd /tmp/
 
+rm ./easylist.txt*
+
 while ! wget https://easylist-downloads.adblockplus.org/easylist.txt; do
-    sleep 20s;
+    sleep 0.2s;
 done;
 
 if [[ -d ~/.local/share/luakit/adblock/ ]]; then
-    mv easylist.txt ~/.local/share/luakit/adblock/;
+    mv ./easylist.txt ~/.local/share/luakit/adblock/;
 else
-    mv easylist.txt ~/.local/share/luakit/
+    mv ./easylist.txt ~/.local/share/luakit/;
 fi;
 
 exit

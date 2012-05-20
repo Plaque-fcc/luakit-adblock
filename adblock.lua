@@ -8,7 +8,7 @@
 -- popular Adblock Plus filter list: http://easylist.adblockplus.org/ --
 -- Filterlists need to be updated regularly (~weekly), use cron!      --
 ------------------------------------------------------------------------
---require "webview"
+require "lfs"
 
 local info = info
 local ipairs = ipairs
@@ -20,33 +20,36 @@ local tostring = tostring
 local webview = webview
 local lousy = require "lousy"
 local capi = { luakit = luakit }
-local out = io.stdout
+local lfs = lfs
 
 module("adblock")
 
 --- Module global variables
 local enabled = true
 -- Adblock Plus compatible filter lists
-local adcat, why = io.popen("ls " .. capi.luakit.data_dir .. "/adblock/*.txt", "r")
-
-if not adcat then
-    out:write(why .. "\n")
-else
-    out:write("Ok.\n")
-end
+local curdir = lfs.currentdir()
+local adblock_dir = capi.luakit.data_dir .. "/adblock/"
+local smiple_mode = true
 
 local filterfiles = {}
 
-for line in adcat:lines() do
-    out:write("Found adblock list: " .. line .. "\n")
-    table.insert(filterfiles, line )
+-- Try to find subscriptions directory:
+if not lfs.chdir(adblock_dir) then
+    filterfiles = { capi.luakit.data_dir .. "/easylist.txt" }
+else
+    simple_mode = false
+    -- Look for filters lists:
+    lfs.chdir(curdir)
+    for filename in lfs.dir(adblock_dir) do
+        if string.find(filename, ".txt$") then
+            info("Found adblock list: " .. filename)
+            table.insert(filterfiles, adblock_dir .. filename)
+        end
+    end
 end
 
-if table.maxn(filterfiles) > 0 then
-    out:write( "Found " .. table.maxn(filterfiles) .. " rules lists.\n" )
-else
-    out:write( "Fallback to single easylist.txt\n" )
-    filterfiles = { capi.luakit.data_dir .. "/easylist.txt" }
+if not simple_mode then
+    info( "Found " .. table.maxn(filterfiles) .. " rules lists.\n" )
 end
 
 -- String patterns to filter URI's with
@@ -136,6 +139,8 @@ end
 
 -- Load filter list files
 load = function ()
+    -- [re-]loading:
+    whitelist, blacklist = {}, {}
     for _, filename in ipairs(filterfiles) do
         local white, black = parse_abpfilterlist(filename)
         whitelist = lousy.util.table.join(whitelist or {}, white)
@@ -162,7 +167,6 @@ match = function (uri, signame)
     for _, pattern in ipairs(whitelist) do
         if string.match(uri, pattern) then
             info("adblock: allowing %q as pattern %q matched to uri %s", signame, pattern, uri)
-            out:write ("Allowed " .. signame .. " as pattern " .. pattern .. " matched to uri " .. uri .. "\n")
             return true
         end
     end
@@ -171,7 +175,6 @@ match = function (uri, signame)
     for _, pattern in ipairs(blacklist) do
         if string.match(uri, pattern) then
             info("adblock: blocking %q as pattern %q matched to uri %s", signame, pattern, uri)
-            out:write ("Blocked " .. signame .. " as pattern " .. pattern .. " matched to uri " .. uri .. "\n")
             return false
         end
     end

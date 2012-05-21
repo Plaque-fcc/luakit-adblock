@@ -221,6 +221,17 @@ parse_abpfilterlist = function (filename)
     return white, black
 end
 
+function refresh_views()
+    -- Refresh open filters views
+    for _, w in pairs(window.bywidget) do
+        for _, v in ipairs(w.tabs.children) do
+            if string.match(v.uri, "^luakit://adblock/?") then
+                v:reload()
+            end
+        end
+    end
+end
+
 -- Load filter list files
 load = function (reload)
     if reload then subscriptions, filterfiles = {}, {} end
@@ -246,6 +257,8 @@ load = function (reload)
         whitelist = lousy.util.table.join(whitelist or {}, white)
         blacklist = lousy.util.table.join(blacklist or {}, black)
     end
+    
+    refresh_views()
 end
 
 -- Tests URI against user-defined filter functions, then whitelist, then blacklist
@@ -314,19 +327,12 @@ function list_opts_modify(list_index, opt_ex, opt_inc)
     
     list.opts = opts
     write_subscriptions()
-    -- Refresh open bookmarks views
-    for _, w in pairs(window.bywidget) do
-        for _, v in ipairs(w.tabs.children) do
-            if string.match(v.uri, "^luakit://adblock/?") then
-                v:reload()
-            end
-        end
-    end
+    refresh_views()
 end
 
 --- Add a list to the in-memory lists table
 function add_list(uri, title, opts, replace, save_lists)
-    assert(uri ~= nil, "bookmark add: no URI given")
+    assert(uri ~= nil, "adblock list add: no URI given")
     if not opts then opts = {} end
 
     -- Create tags table from string
@@ -338,7 +344,7 @@ function add_list(uri, title, opts, replace, save_lists)
             if not util.table.hasitem(list, opts) then table.insert(list, opts) end
         end
     else
-        -- Insert new bookmark
+        -- Insert new adblock list
         local list = { uri = uri, title = title, opts = opts }
         if not (uri == "" or uri == nil) then
             subscriptions[uri] = list
@@ -393,8 +399,8 @@ end
 
 --- Shows the chrome page in the given view.
 chrome.add("adblock/", function (view, uri)
-    -- Get a list of all the unique tags in all the bookmarks and build a
-    -- relation between a given tag and a list of bookmarks with that tag.
+    -- Get a list of all the unique tags in all the lists and build a
+    -- relation between a given tag and a list of subscriptions with that tag.
     local opts = {}
     local id = 0
     for _, list in pairs(subscriptions) do

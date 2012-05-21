@@ -223,6 +223,7 @@ end
 
 -- Load filter list files
 load = function (reload)
+    if reload then subscriptions, filterfiles = {}, {} end
     detect_files()
     if not simple_mode then
         read_subscriptions()

@@ -466,6 +466,10 @@ add_cmds({
         info("adblock: Reloading filters complete.")
     end),
     
+    cmd("adblock", function (w)
+        w:navigate("luakit://adblock/")
+    end),
+    
     cmd({"adblock-list-enable", "abe"}, function (w, a)
         list_opts_modify(tonumber(a), "Disabled", "Enabled")
     end),

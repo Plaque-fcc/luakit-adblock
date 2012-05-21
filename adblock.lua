@@ -2,55 +2,114 @@
 -- Simple URI-based content filter                                    --
 -- (C) 2010 Chris van Dijk (quigybo) <quigybo@hotmail.com>            --
 -- (C) 2010 Mason Larobina (mason-l) <mason.larobina@gmail.com>       --
+-- © 2012 Plaque FCC <Reslayer@ya.ru>                                 --
+-- © 2010 adblock chromepage from bookmarks.lua by Henning Hasemann & --
+-- Mason Larobina taken by Plaque FCC.                                --
 --                                                                    --
--- Download an Adblock Plus compatible filter list to $XDG_DATA_HOME  --
--- and update the "filterfiles" entry below. EasyList is the most     --
--- popular Adblock Plus filter list: http://easylist.adblockplus.org/ --
+-- Download an Adblock Plus compatible filter lists to luakit data    --
+-- dir into "/adblock/" directory for multiple lists support or into  --
+-- data dir root to use single file. EasyList is the most popular     --
+-- Adblock Plus filter list: http://easylist.adblockplus.org/         --
 -- Filterlists need to be updated regularly (~weekly), use cron!      --
 ------------------------------------------------------------------------
-require "lfs"
 
 local info = info
+local pairs = pairs
 local ipairs = ipairs
+local assert = assert
+local unpack = unpack
+local type = type
 local io = io
 local os = os
 local string = string
 local table = table
 local tostring = tostring
+local tonumber = tonumber
 local webview = webview
-local lousy = require "lousy"
+local lousy = require("lousy")
+local util = lousy.util
+local chrome = require("chrome")
 local capi = { luakit = luakit }
-local lfs = lfs
+local add_binds, add_cmds = add_binds, add_cmds
+local lfs = require("lfs")
+local window = window
 
 module("adblock")
 
 --- Module global variables
 local enabled = true
 -- Adblock Plus compatible filter lists
-local curdir = lfs.currentdir()
 local adblock_dir = capi.luakit.data_dir .. "/adblock/"
-local smiple_mode = true
 
 local filterfiles = {}
+local subscriptions_file = adblock_dir .. "/subscriptions"
+local subscriptions = {}
 
--- Try to find subscriptions directory:
-if not lfs.chdir(adblock_dir) then
-    filterfiles = { capi.luakit.data_dir .. "/easylist.txt" }
-else
-    simple_mode = false
-    -- Look for filters lists:
-    lfs.chdir(curdir)
-    for filename in lfs.dir(adblock_dir) do
-        if string.find(filename, ".txt$") then
-            info("Found adblock list: " .. filename)
-            table.insert(filterfiles, adblock_dir .. filename)
-        end
-    end
-end
 
-if not simple_mode then
-    info( "Found " .. table.maxn(filterfiles) .. " rules lists.\n" )
-end
+-- Templates
+block_template = [==[<div class="tag"><h1>{opt}</h1><ul>{links}</ul></div>]==]
+link_template  = [==[<li>{title}: <a href="{uri}">{name}</a> <span class="id">{id}</span></li>]==]
+
+html_template = [==[
+<html>
+<head>
+    <title>{title}</title>
+    <style type="text/css">
+    {style}
+    </style>
+</head>
+<body>
+{opts}
+</body>
+</html>
+]==]
+
+-- Template subs
+html_page_title = "AdBlock filters"
+
+html_style = [===[
+    body {
+        font-family: monospace;
+        margin: 25px;
+        line-height: 1.5em;
+        font-size: 12pt;
+    }
+    div.tag {
+        width: 100%;
+        padding: 0px;
+        margin: 0 0 25px 0;
+        clear: both;
+    }
+    span.id {
+        font-size: small;
+        color: #333333;
+        float: right;
+    }
+    .tag ul {
+        padding: 0;
+        margin: 0;
+        list-style-type: none;
+    }
+    .tag h1 {
+        font-size: 12pt;
+        font-weight: bold;
+        font-style: normal;
+        font-variant: small-caps;
+        padding: 0 0 5px 0;
+        margin: 0;
+        color: #333333;
+        border-bottom: 1px solid #aaa;
+    }
+    .tag a:link {
+        color: #0077bb;
+        text-decoration: none;
+    }
+    .tag a:hover {
+        color: #0077bb;
+        text-decoration: underline;
+    }
+]===]
+
 
 -- String patterns to filter URI's with
 local whitelist = {}
@@ -65,6 +124,31 @@ enable = function ()
 end
 disable = function ()
     enabled = false
+end
+
+function detect_files()
+    local curdir = lfs.currentdir()
+    local smiple_mode = true
+    -- Try to find subscriptions directory:
+    if not lfs.chdir(adblock_dir) then
+        filterfiles = { capi.luakit.data_dir .. "/easylist.txt" }
+    else
+        simple_mode = false
+        -- Look for filters lists:
+        lfs.chdir(curdir)
+        for filename in lfs.dir(adblock_dir) do
+            if string.find(filename, ".txt$") then
+                info("adblock: Found adblock list: " .. filename)
+                table.insert(filterfiles, filename)
+            end
+        end
+    end
+    
+    if not simple_mode then
+        info( "adblock: Found " .. table.maxn(filterfiles) .. " rules lists.\n" )
+    end
+    
+    return
 end
 
 -- Convert Adblock Plus filter description to lua string pattern
@@ -138,9 +222,24 @@ parse_abpfilterlist = function (filename)
 end
 
 -- Load filter list files
-load = function ()
+load = function (reload)
+    detect_files()
+    if not simple_mode then
+        read_subscriptions()
+        local files_list = {}
+        for _, filename in ipairs(filterfiles) do
+            local list = subscriptions[filename]
+            if list and util.table.hasitem(list.opts, "Enabled") then
+                table.insert(files_list, adblock_dir .. filename)
+            else
+                add_list("", filename, "Disabled", true, true)
+            end
+        end
+        filterfiles = files_list
+    end
+
     -- [re-]loading:
-    whitelist, blacklist = {}, {}
+    if reload then whitelist, blacklist = {}, {} end
     for _, filename in ipairs(filterfiles) do
         local white, black = parse_abpfilterlist(filename)
         whitelist = lousy.util.table.join(whitelist or {}, white)
@@ -190,6 +289,191 @@ webview.init_funcs.adblock_signals = function (view, w)
     view:add_signal("navigation-request",        function (v, uri) return filter(v, uri, "navigation-request")        end)
     view:add_signal("resource-request-starting", function (v, uri) return filter(v, uri, "resource-request-starting") end)
 end
+
+-- Remove options and add new ones to list
+-- @param list_index Index of the list to modify
+-- @param opt_ex Options to exclude
+-- @param opt_inc Options to include
+function list_opts_modify(list_index, opt_ex, opt_inc)
+    assert(type(list_index) == "number", "list options modify: invalid list index")
+    assert(list_index > 0, "list options modify: index has to be > 0")
+    if not opt_ex then opt_ex = {} end
+    if not opt_inc then opt_inc = {} end
+    
+    if type(opt_ex) == "string" then opt_ex = util.string.split(opt_ex) end
+    if type(opt_inc) == "string" then opt_inc = util.string.split(opt_inc) end
+    
+    local list = util.table.values(subscriptions)[list_index]
+    local opts = opt_inc
+    for _, opt in ipairs(list.opts) do
+        if not util.table.hasitem(opt_ex, opt) then
+            table.insert(opts, opt)
+        end
+    end
+    
+    list.opts = opts
+    write_subscriptions()
+    -- Refresh open bookmarks views
+    for _, w in pairs(window.bywidget) do
+        for _, v in ipairs(w.tabs.children) do
+            if string.match(v.uri, "^luakit://adblock/?") then
+                v:reload()
+            end
+        end
+    end
+end
+
+--- Add a list to the in-memory lists table
+function add_list(uri, title, opts, replace, save_lists)
+    assert(uri ~= nil, "bookmark add: no URI given")
+    if not opts then opts = {} end
+
+    -- Create tags table from string
+    if type(opts) == "string" then opts = util.string.split(opts) end
+    if not replace and ( subscriptions[title] or subscriptions[uri] ) then
+        local list = subscriptions[title] or subscriptions[uri]
+        -- Merge tags
+        for _, opts in ipairs(opts) do
+            if not util.table.hasitem(list, opts) then table.insert(list, opts) end
+        end
+    else
+        -- Insert new bookmark
+        local list = { uri = uri, title = title, opts = opts }
+        if not (uri == "" or uri == nil) then
+            subscriptions[uri] = list
+        end
+        if not (title == "" or title == nil) then
+            subscriptions[title] = list
+        end
+    end
+
+    -- Save by default
+    if save_lists ~= false then write_subscriptions() end
+end
+
+--- Save the in-memory subscriptions to flatfile.
+-- @param file The destination file or the default location if nil.
+function write_subscriptions(file)
+    if not file then file = subscriptions_file end
+
+    local lines = {}
+    local added = {}
+    for _, list in pairs(subscriptions) do
+        if not util.table.hasitem(added, list) then
+            local subs = { uri = list.uri, title = list.title, opts = table.concat(list.opts or {}, " "), }
+            local line = string.gsub("{title}\t{uri}\t{opts}", "{(%w+)}", subs)
+            table.insert(added, list)
+            table.insert(lines, line)
+        end
+    end
+
+    -- Write table to disk
+    local fh = io.open(file, "w")
+    fh:write(table.concat(lines, "\n"))
+    io.close(fh)
+end
+
+--- Load subscriptions from a flatfile to memory.
+-- @param file The subscriptions file or the default subscriptions location if nil.
+-- @param clear_first Should the subscriptions in memory be dumped before loading.
+function read_subscriptions(file, clear_first)
+    if clear_first then clear() end
+
+    -- Find a subscriptions file
+    if not file then file = subscriptions_file end
+    if not os.exists(file) then return end
+
+    -- Read lines into subscriptions data table
+    for line in io.lines(file or subscriptions_file) do
+        local title, uri, opts = unpack(util.string.split(line, "\t"))
+        if title ~= "" then add_list(uri, title, opts, false, false) end
+    end
+end
+
+--- Shows the chrome page in the given view.
+chrome.add("adblock/", function (view, uri)
+    -- Get a list of all the unique tags in all the bookmarks and build a
+    -- relation between a given tag and a list of bookmarks with that tag.
+    local opts = {}
+    local id = 0
+    for _, list in pairs(subscriptions) do
+        id = id + 1
+        list['id'] = id
+        for _, opt in ipairs(list.opts) do
+            if not opts[opt] then opts[opt] = {} end
+            opts[opt][list.title] = list
+        end
+    end
+
+    -- For each tag build
+    local lines = {}
+    for _, opt in ipairs(util.table.keys(opts)) do
+        local links = {}
+        for _, title in ipairs(util.table.keys(opts[opt])) do
+            local list = opts[opt][title]
+            local link_subs = {
+                uri = list.uri,
+                id = list.id,
+                name = util.escape(list.uri),
+                title = list.title,
+            }
+            local link = string.gsub(link_template, "{(%w+)}", link_subs)
+            table.insert(links, link)
+        end
+
+        local block_subs = {
+            opt   = opt,
+            links = table.concat(links, "\n")
+        }
+        local block = string.gsub(block_template, "{(%w+)}", block_subs)
+        table.insert(lines, block)
+    end
+
+    local html_subs = {
+        opts  = table.concat(lines, "\n\n"),
+        title = html_page_title,
+        style = html_style
+    }
+
+    local html = string.gsub(html_template, "{(%w+)}", html_subs)
+    view:load_string(html, tostring(uri))
+end)
+
+-- URI of the chrome page
+chrome_page    = "luakit://adblock/"
+
+-- Add normal binds.
+local key, buf = lousy.bind.key, lousy.bind.buf
+add_binds("normal", {
+    buf("^ga$", function (w)
+        w:navigate(chrome_page)
+    end),
+
+    buf("^gA$", function (w, b, m)
+        for i=1, m.count do
+            w:new_tab(chrome_page)
+        end
+    end, {count=1}),
+})
+
+
+-- Add commands.
+local cmd = lousy.bind.cmd
+add_cmds({
+    cmd({"adblock-reload", "abr"}, function (w)
+        info("adblock: Reloading filters.")
+        load(true)
+        info("adblock: Reloading filters complete.")
+    end),
+    
+    cmd({"adblock-list-enable", "abe"}, function (w, a)
+        list_opts_modify(tonumber(a), "Disabled", "Enabled")
+    end),
+    
+    cmd({"adblock-list-disable", "abd"}, function (w, a)
+        list_opts_modify(tonumber(a), "Enabled", "Disabled")
+    end),
+})
 
 -- Initialise module
 load()

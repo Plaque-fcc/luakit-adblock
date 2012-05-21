@@ -97,7 +97,7 @@ html_style = [===[
         font-variant: small-caps;
         padding: 0 0 5px 0;
         margin: 0;
-        color: #333333;
+        color: #CC3333;
         border-bottom: 1px solid #aaa;
     }
     .tag a:link {

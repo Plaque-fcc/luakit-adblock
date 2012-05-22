@@ -42,6 +42,7 @@ local enabled = true
 local adblock_dir = capi.luakit.data_dir .. "/adblock/"
 
 local filterfiles = {}
+local simple_mode = true
 local subscriptions_file = adblock_dir .. "/subscriptions"
 local subscriptions = {}
 
@@ -128,10 +129,9 @@ end
 
 function detect_files()
     local curdir = lfs.currentdir()
-    local smiple_mode = true
     -- Try to find subscriptions directory:
     if not lfs.chdir(adblock_dir) then
-        filterfiles = { capi.luakit.data_dir .. "/easylist.txt" }
+        lfs.mkdir(adblock_dir)
     else
         simple_mode = false
         -- Look for filters lists:
@@ -142,6 +142,11 @@ function detect_files()
                 table.insert(filterfiles, filename)
             end
         end
+    end
+    
+    if table.maxn(filterfiles) < 1 then
+        simple_mode = true
+        filterfiles = { capi.luakit.data_dir .. "/easylist.txt" }
     end
     
     if not simple_mode then

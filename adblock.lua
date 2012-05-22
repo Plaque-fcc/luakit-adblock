@@ -226,8 +226,8 @@ parse_abpfilterlist = function (filename)
     return white, black
 end
 
+-- Refresh open filters views (if any)
 function refresh_views()
-    -- Refresh open filters views
     for _, w in pairs(window.bywidget) do
         for _, v in ipairs(w.tabs.children) do
             if string.match(v.uri, "^luakit://adblock/?") then
@@ -249,10 +249,12 @@ load = function (reload)
             if list and util.table.hasitem(list.opts, "Enabled") then
                 table.insert(files_list, adblock_dir .. filename)
             else
-                add_list("", filename, "Disabled", true, true)
+                add_list("", filename, "Disabled", true, false)
             end
         end
         filterfiles = files_list
+        -- Yes we may have changed subscriptions and even fixed something with them.
+        write_subscriptions()
     end
 
     -- [re-]loading:

@@ -342,6 +342,7 @@ function add_list(uri, title, opts, replace, save_lists)
 
     -- Create tags table from string
     if type(opts) == "string" then opts = util.string.split(opts) end
+    if table.maxn(opts) == 0 then table.insert(opts, "Disabled") end
     if not replace and ( subscriptions[title] or subscriptions[uri] ) then
         local list = subscriptions[title] or subscriptions[uri]
         -- Merge tags

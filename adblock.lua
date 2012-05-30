@@ -48,6 +48,7 @@ local subscriptions = {}
 
 
 -- Templates
+header_template = [==[<div class="header"><h2>AdBlock module: {state}</h2></div><hr>]==]
 block_template = [==[<div class="tag"><h1>{opt}</h1><ul>{links}</ul></div>]==]
 link_template  = [==[<li>{title}: <a href="{uri}">{name}</a> <span class="id">{id}</span></li>]==]
 
@@ -60,6 +61,7 @@ html_template = [==[
     </style>
 </head>
 <body>
+{header}
 {opts}
 </body>
 </html>
@@ -122,11 +124,23 @@ local filterfuncs = {}
 -- Enable or disable filtering
 enable = function ()
     enabled = true
+    refresh_views()
 end
 disable = function ()
     enabled = false
+    refresh_views()
 end
 
+-- Report AdBlock state: «Enabled» or «Disabled»
+state = function()
+    if enabled then
+	return "Enabled"
+    else
+	return "Disabled"
+    end
+end
+
+-- Detect files to read rules from
 function detect_files()
     local curdir = lfs.currentdir()
     -- Try to find subscriptions directory:
@@ -419,6 +433,12 @@ chrome.add("adblock/", function (view, uri)
             opts[opt][list.title] = list
         end
     end
+    
+    -- Fill the header
+    local header_subs = {
+	state = state()
+    }
+    local html_page_header = string.gsub(header_template, "{(%w+)}", header_subs)
 
     -- For each tag build
     local lines = {}
@@ -445,9 +465,10 @@ chrome.add("adblock/", function (view, uri)
     end
 
     local html_subs = {
-        opts  = table.concat(lines, "\n\n"),
-        title = html_page_title,
-        style = html_style
+        opts   = table.concat(lines, "\n\n"),
+        title  = html_page_title,
+        header = html_page_header,
+        style  = html_style
     }
 
     local html = string.gsub(html_template, "{(%w+)}", html_subs)
@@ -485,12 +506,19 @@ add_cmds({
         w:navigate("luakit://adblock/")
     end),
     
-    cmd({"adblock-list-enable", "abe"}, function (w, a)
+    cmd({"adblock-list-enable", "able"}, function (w, a)
         list_opts_modify(tonumber(a), "Disabled", "Enabled")
     end),
     
-    cmd({"adblock-list-disable", "abd"}, function (w, a)
+    cmd({"adblock-list-disable", "abld"}, function (w, a)
         list_opts_modify(tonumber(a), "Enabled", "Disabled")
+    end),
+    cmd({"adblock-enable", "abe"}, function (w)
+	enable()
+    end),
+    
+    cmd({"adblock-disable", "abd"}, function (w)
+	disable()
     end),
 })
 

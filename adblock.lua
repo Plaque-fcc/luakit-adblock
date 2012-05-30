@@ -48,7 +48,7 @@ local subscriptions = {}
 
 
 -- Templates
-header_template = [==[<div class="header"><h2>AdBlock module: {state}</h2></div><hr>]==]
+header_template = [==[<div class="header"><h2>AdBlock module: {state}</h2><br>AdBlock is in <b>{mode}</b> mode.</div><hr>]==]
 block_template = [==[<div class="tag"><h1>{opt}</h1><ul>{links}</ul></div>]==]
 link_template  = [==[<li>{title}: <a href="{uri}">{name}</a> <span class="id">{id}</span></li>]==]
 
@@ -137,6 +137,14 @@ state = function()
 	return "Enabled"
     else
 	return "Disabled"
+    end
+end
+
+mode = function()
+    if simple_mode then
+	return "simple"
+    else
+	return "normal"
     end
 end
 
@@ -436,7 +444,8 @@ chrome.add("adblock/", function (view, uri)
     
     -- Fill the header
     local header_subs = {
-	state = state()
+	state = state(),
+	mode  = mode(),
     }
     local html_page_header = string.gsub(header_template, "{(%w+)}", header_subs)
 

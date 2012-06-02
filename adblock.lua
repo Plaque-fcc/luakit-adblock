@@ -48,10 +48,11 @@ local subscriptions = {}
 
 
 -- Templates
-header_template = [==[<div class="header"><h2>AdBlock module: {state}</h2><br>AdBlock is in <b>{mode}</b> mode.{rules}</div><hr>]==]
-rules_template = [==[ {black} rules blacklisting, {white} rules whitelisting.]==]
-block_template = [==[<div class="tag"><h1>{opt}</h1><ul>{links}</ul></div>]==]
-link_template  = [==[<li>{title}: <i>(b{black}/w{white}), </i> <a href="{uri}">{name}</a> <span class="id">{id}</span></li>]==]
+header_template         = [==[<div class="header"><h2>AdBlock module: {state}</h2><br>AdBlock is in <b>{mode}</b> mode.{rules}</div><hr>]==]
+rules_template          = [==[ {black} rules blacklisting, {white} rules whitelisting.]==]
+block_template          = [==[<div class="tag"><h1>{opt}</h1><ul>{links}</ul></div>]==]
+list_template_enabled   = [==[<li>{title}: <i>(b{black}/w{white}), </i> <a href="{uri}">{name}</a> <span class="id">{id}</span></li>]==]
+list_template_disabled  = [==[<li>{title}: <a href="{uri}">{name}</a> <span class="id">{id}</span></li>]==]
 
 html_template = [==[
 <html>
@@ -467,8 +468,12 @@ chrome.add("adblock/", function (view, uri)
                 white   = list.white,
                 black   = list.black,
             }
-            rulescount.black, rulescount.white = rulescount.black + list.black, rulescount.white + list.white
-            local link = string.gsub(link_template, "{(%w+)}", link_subs)
+            local list_template = list_template_disabled
+            if util.table.hasitem(list.opts, "Enabled") and list.white and list.black then
+                rulescount.black, rulescount.white = rulescount.black + list.black, rulescount.white + list.white
+                list_template = list_template_enabled
+            end
+            local link = string.gsub(list_template, "{(%w+)}", link_subs)
             table.insert(links, link)
         end
 

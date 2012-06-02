@@ -48,9 +48,10 @@ local subscriptions = {}
 
 
 -- Templates
-header_template = [==[<div class="header"><h2>AdBlock module: {state}</h2><br>AdBlock is in <b>{mode}</b> mode.</div><hr>]==]
+header_template = [==[<div class="header"><h2>AdBlock module: {state}</h2><br>AdBlock is in <b>{mode}</b> mode.{rules}</div><hr>]==]
+rules_template = [==[ {black} rules blacklisting, {white} rules whitelisting.]==]
 block_template = [==[<div class="tag"><h1>{opt}</h1><ul>{links}</ul></div>]==]
-link_template  = [==[<li>{title}: <a href="{uri}">{name}</a> <span class="id">{id}</span></li>]==]
+link_template  = [==[<li>{title}: <i>(b{black}/w{white}), </i> <a href="{uri}">{name}</a> <span class="id">{id}</span></li>]==]
 
 html_template = [==[
 <html>
@@ -134,17 +135,17 @@ end
 -- Report AdBlock state: «Enabled» or «Disabled»
 state = function()
     if enabled then
-	return "Enabled"
+        return "Enabled"
     else
-	return "Disabled"
+        return "Disabled"
     end
 end
 
 mode = function()
     if simple_mode then
-	return "simple"
+        return "simple"
     else
-	return "normal"
+        return "normal"
     end
 end
 
@@ -168,7 +169,7 @@ function detect_files()
     
     if table.maxn(filterfiles) < 1 then
         simple_mode = true
-        filterfiles = { capi.luakit.data_dir .. "/easylist.txt" }
+        filterfiles = { "/easylist.txt" }
     end
     
     if not simple_mode then
@@ -269,7 +270,7 @@ load = function (reload)
         for _, filename in ipairs(filterfiles) do
             local list = subscriptions[filename]
             if list and util.table.hasitem(list.opts, "Enabled") then
-                table.insert(files_list, adblock_dir .. filename)
+                table.insert(files_list, filename)
             else
                 add_list("", filename, "Disabled", true, false)
             end
@@ -281,8 +282,16 @@ load = function (reload)
 
     -- [re-]loading:
     if reload then whitelist, blacklist = {}, {} end
+    local filters_dir = adblock_dir
+    if simple_mode then
+        filters_dir = capi.luakit.data_dir
+    end
     for _, filename in ipairs(filterfiles) do
-        local white, black = parse_abpfilterlist(filename)
+        local white, black = parse_abpfilterlist(filters_dir .. filename)
+        if not simple_mode then
+            local list = subscriptions[filename]
+            list.white, list.black = table.maxn(white) or 0, table.maxn(black) or 0
+        end
         whitelist = lousy.util.table.join(whitelist or {}, white)
         blacklist = lousy.util.table.join(blacklist or {}, black)
     end
@@ -441,13 +450,8 @@ chrome.add("adblock/", function (view, uri)
             opts[opt][list.title] = list
         end
     end
-    
-    -- Fill the header
-    local header_subs = {
-	state = state(),
-	mode  = mode(),
-    }
-    local html_page_header = string.gsub(header_template, "{(%w+)}", header_subs)
+
+    local rulescount = { black = 0, white = 0 }
 
     -- For each tag build
     local lines = {}
@@ -456,11 +460,14 @@ chrome.add("adblock/", function (view, uri)
         for _, title in ipairs(util.table.keys(opts[opt])) do
             local list = opts[opt][title]
             local link_subs = {
-                uri = list.uri,
-                id = list.id,
-                name = util.escape(list.uri),
-                title = list.title,
+                uri     = list.uri,
+                id      = list.id,
+                name    = util.escape(list.uri),
+                title   = list.title,
+                white   = list.white,
+                black   = list.black,
             }
+            rulescount.black, rulescount.white = rulescount.black + list.black, rulescount.white + list.white
             local link = string.gsub(link_template, "{(%w+)}", link_subs)
             table.insert(links, link)
         end
@@ -472,12 +479,34 @@ chrome.add("adblock/", function (view, uri)
         local block = string.gsub(block_template, "{(%w+)}", block_subs)
         table.insert(lines, block)
     end
+    local html_rules = ""
+    if simple_mode then
+        rulescount = {
+            black = table.maxn(blacklist),
+            white = table.maxn(whitelist)
+        }
+    end
+    
+    if rulescount.black + rulescount.white > 0 then
+        local rules_subs = {
+            black = rulescount.black,
+            white = rulescount.white
+        }
+        html_rules = string.gsub(rules_template, "{(%w+)}", rules_subs)
+    end
+    -- Fill the header
+    local header_subs = {
+        state = state(),
+        mode  = mode(),
+        rules = html_rules,
+    }
+    local html_page_header = string.gsub(header_template, "{(%w+)}", header_subs)
 
     local html_subs = {
         opts   = table.concat(lines, "\n\n"),
         title  = html_page_title,
         header = html_page_header,
-        style  = html_style
+        style  = html_style,
     }
 
     local html = string.gsub(html_template, "{(%w+)}", html_subs)

@@ -453,8 +453,9 @@ chrome.add("adblock/", function (view, uri)
     end
 
     local rulescount = { black = 0, white = 0 }
+    local ruleslist  = {}
 
-    -- For each tag build
+    -- For each opt build a block
     local lines = {}
     for _, opt in ipairs(util.table.keys(opts)) do
         local links = {}
@@ -469,8 +470,13 @@ chrome.add("adblock/", function (view, uri)
                 black   = list.black,
             }
             local list_template = list_template_disabled
+            -- Show rules count only when enabled this list and have read its rules
             if util.table.hasitem(list.opts, "Enabled") and list.white and list.black then
-                rulescount.black, rulescount.white = rulescount.black + list.black, rulescount.white + list.white
+                -- For totals count items only once (protection from multi-tagging by several opts confusion)
+                if not util.table.hasitem(ruleslist, list) then
+                    rulescount.black, rulescount.white = rulescount.black + list.black, rulescount.white + list.white
+                    table.insert(ruleslist, list)
+                end
                 list_template = list_template_enabled
             end
             local link = string.gsub(list_template, "{(%w+)}", link_subs)
@@ -491,13 +497,9 @@ chrome.add("adblock/", function (view, uri)
             white = table.maxn(whitelist)
         }
     end
-    
+    -- Display rules count only if have them been count
     if rulescount.black + rulescount.white > 0 then
-        local rules_subs = {
-            black = rulescount.black,
-            white = rulescount.white
-        }
-        html_rules = string.gsub(rules_template, "{(%w+)}", rules_subs)
+        html_rules = string.gsub(rules_template, "{(%w+)}", rulescount)
     end
     -- Fill the header
     local header_subs = {

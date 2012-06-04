@@ -330,7 +330,7 @@ match = function (uri, signame)
     end
     
     -- Test against each list's rules
-    for _, list in ipairs(rules) do
+    for _, list in pairs(rules) do
         -- Check for a match to whitelist
         for _, pattern in ipairs(list.whitelist or {}) do
             if string.match(uri, pattern) then

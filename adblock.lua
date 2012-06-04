@@ -117,8 +117,6 @@ html_style = [===[
 
 
 -- String patterns to filter URI's with
---local whitelist = {}
---local blacklist = {}
 local rules = {}
 
 -- Functions to filter URI's by
@@ -301,20 +299,16 @@ load = function (reload, single_list)
         if not simple_mode then
             list = subscriptions[filename]
         else
-            for k, v in pairs(rules) do
-                if v.title == filename then
-                    list = v
-                    break
-                end
+            local list_found = rules[filename]
+            if list_found then
+                list = list_found
             end
         end
         if not util.table.hasitem(rules, list) then
-            table.insert(rules, list)
+            rules[filename] = list
         end
         list.title, list.white, list.black = filename, table.maxn(white) or 0, table.maxn(black) or 0
         list.whitelist, list.blacklist = white or {}, black or {}
-        --whitelist = lousy.util.table.join(whitelist or {}, white)
-        --blacklist = lousy.util.table.join(blacklist or {}, black)
     end
     
     refresh_views()
@@ -360,6 +354,14 @@ filter = function (v, uri, signame)
     if enabled then return match(uri, signame or "") end
 end
 
+function table.itemid(t, item)
+    for id, v in ipairs(t) do
+        if v == item then
+            return id
+        end
+    end
+end
+
 -- Connect signals to all webview widgets on creation
 webview.init_funcs.adblock_signals = function (view, w)
     view:add_signal("navigation-request",        function (v, uri) return filter(v, uri, "navigation-request")        end)
@@ -388,7 +390,7 @@ function list_opts_modify(list_index, opt_ex, opt_inc)
     end
     
     -- Manage list's rules
-    local listIDfound = util.table.hasitem(rules, list)
+    local listIDfound = table.itemid(rules, list)
     if util.table.hasitem(opt_inc, "Enabled") then
         if not listIDfound then
             --table.insert(rules, list)
@@ -526,12 +528,6 @@ chrome.add("adblock/", function (view, uri)
             rulescount.black, rulescount.white = rulescount.black + list.black, rulescount.white + list.white
         end
     end
---     if simple_mode then
---         rulescount = {
---             black = table.maxn(blacklist),
---             white = table.maxn(whitelist)
---         }
---     end
     -- Display rules count only if have them been count
     local html_rules = ""
     if rulescount.black + rulescount.white > 0 then

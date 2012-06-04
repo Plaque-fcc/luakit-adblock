@@ -117,8 +117,10 @@ html_style = [===[
 
 
 -- String patterns to filter URI's with
-local whitelist = {}
-local blacklist = {}
+--local whitelist = {}
+--local blacklist = {}
+local rules = {}
+
 -- Functions to filter URI's by
 -- Return true or false to allow or block respectively, nil to continue matching
 local filterfuncs = {}
@@ -262,10 +264,10 @@ function refresh_views()
 end
 
 -- Load filter list files
-load = function (reload)
+load = function (reload, single_list)
     if reload then subscriptions, filterfiles = {}, {} end
     detect_files()
-    if not simple_mode then
+    if not simple_mode and not single_list then
         read_subscriptions()
         local files_list = {}
         for _, filename in ipairs(filterfiles) do
@@ -282,19 +284,37 @@ load = function (reload)
     end
 
     -- [re-]loading:
-    if reload then whitelist, blacklist = {}, {} end
+    if reload then rules = {} end
     local filters_dir = adblock_dir
     if simple_mode then
         filters_dir = capi.luakit.data_dir
     end
+    local filterfiles_loading = {}
+    if single_list and not reload then
+        filterfiles_loading = { single_list }
+    else
+        filterfiles_loading = filterfiles
+    end
     for _, filename in ipairs(filterfiles) do
         local white, black = parse_abpfilterlist(filters_dir .. filename)
+        local list = {}
         if not simple_mode then
-            local list = subscriptions[filename]
-            list.white, list.black = table.maxn(white) or 0, table.maxn(black) or 0
+            list = subscriptions[filename]
+        else
+            for k, v in pairs(rules) do
+                if v.title == filename then
+                    list = v
+                    break
+                end
+            end
         end
-        whitelist = lousy.util.table.join(whitelist or {}, white)
-        blacklist = lousy.util.table.join(blacklist or {}, black)
+        if not util.table.hasitem(rules, list) then
+            table.insert(rules, list)
+        end
+        list.title, list.white, list.black = filename, table.maxn(white) or 0, table.maxn(black) or 0
+        list.whitelist, list.blacklist = white or {}, black or {}
+        --whitelist = lousy.util.table.join(whitelist or {}, white)
+        --blacklist = lousy.util.table.join(blacklist or {}, black)
     end
     
     refresh_views()
@@ -314,20 +334,23 @@ match = function (uri, signame)
             return ret
         end
     end
-
-    -- Check for a match to whitelist
-    for _, pattern in ipairs(whitelist) do
-        if string.match(uri, pattern) then
-            info("adblock: allowing %q as pattern %q matched to uri %s", signame, pattern, uri)
-            return true
+    
+    -- Test against each list's rules
+    for _, list in ipairs(rules) do
+        -- Check for a match to whitelist
+        for _, pattern in ipairs(list.whitelist or {}) do
+            if string.match(uri, pattern) then
+                info("adblock: allowing %q as pattern %q matched to uri %s", signame, pattern, uri)
+                return true
+            end
         end
-    end
 
-    -- Check for a match to blacklist
-    for _, pattern in ipairs(blacklist) do
-        if string.match(uri, pattern) then
-            info("adblock: blocking %q as pattern %q matched to uri %s", signame, pattern, uri)
-            return false
+        -- Check for a match to blacklist
+        for _, pattern in ipairs(list.blacklist or {}) do
+            if string.match(uri, pattern) then
+                info("adblock: blocking %q as pattern %q matched to uri %s", signame, pattern, uri)
+                return false
+            end
         end
     end
 end
@@ -364,6 +387,19 @@ function list_opts_modify(list_index, opt_ex, opt_inc)
         end
     end
     
+    -- Manage list's rules
+    local listIDfound = util.table.hasitem(rules, list)
+    if util.table.hasitem(opt_inc, "Enabled") then
+        if not listIDfound then
+            --table.insert(rules, list)
+            load(false, list.title)
+        end
+    elseif util.table.hasitem(opt_inc, "Disabled") then
+        if listIDfound then
+            table.remove(rules, listIDfound)
+        end
+    end
+    
     list.opts = opts
     write_subscriptions()
     refresh_views()
@@ -371,7 +407,7 @@ end
 
 --- Add a list to the in-memory lists table
 function add_list(uri, title, opts, replace, save_lists)
-    assert(uri ~= nil, "adblock list add: no URI given")
+    assert( (title ~= nil) and (title ~= ""), "adblock list add: no title given")
     if not opts then opts = {} end
 
     -- Create tags table from string
@@ -452,9 +488,6 @@ chrome.add("adblock/", function (view, uri)
         end
     end
 
-    local rulescount = { black = 0, white = 0 }
-    local ruleslist  = {}
-
     -- For each opt build a block
     local lines = {}
     for _, opt in ipairs(util.table.keys(opts)) do
@@ -473,10 +506,6 @@ chrome.add("adblock/", function (view, uri)
             -- Show rules count only when enabled this list and have read its rules
             if util.table.hasitem(list.opts, "Enabled") and list.white and list.black then
                 -- For totals count items only once (protection from multi-tagging by several opts confusion)
-                if not util.table.hasitem(ruleslist, list) then
-                    rulescount.black, rulescount.white = rulescount.black + list.black, rulescount.white + list.white
-                    table.insert(ruleslist, list)
-                end
                 list_template = list_template_enabled
             end
             local link = string.gsub(list_template, "{(%w+)}", link_subs)
@@ -490,14 +519,21 @@ chrome.add("adblock/", function (view, uri)
         local block = string.gsub(block_template, "{(%w+)}", block_subs)
         table.insert(lines, block)
     end
-    local html_rules = ""
-    if simple_mode then
-        rulescount = {
-            black = table.maxn(blacklist),
-            white = table.maxn(whitelist)
-        }
+    
+    local rulescount = { black = 0, white = 0 }
+    for _, list in ipairs(rules) do
+        if list.black and list.white then
+            rulescount.black, rulescount.white = rulescount.black + list.black, rulescount.white + list.white
+        end
     end
+--     if simple_mode then
+--         rulescount = {
+--             black = table.maxn(blacklist),
+--             white = table.maxn(whitelist)
+--         }
+--     end
     -- Display rules count only if have them been count
+    local html_rules = ""
     if rulescount.black + rulescount.white > 0 then
         html_rules = string.gsub(rules_template, "{(%w+)}", rulescount)
     end

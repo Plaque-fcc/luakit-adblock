@@ -293,7 +293,7 @@ load = function (reload, single_list)
     else
         filterfiles_loading = filterfiles
     end
-    for _, filename in ipairs(filterfiles) do
+    for _, filename in ipairs(filterfiles_loading) do
         local white, black = parse_abpfilterlist(filters_dir .. filename)
         local list = {}
         if not simple_mode then
@@ -355,9 +355,11 @@ filter = function (v, uri, signame)
 end
 
 function table.itemid(t, item)
-    for id, v in ipairs(t) do
+    local pos = 0
+    for id, v in pairs(t) do
+        pos = pos + 1
         if v == item then
-            return id
+            return pos
         end
     end
 end
@@ -393,13 +395,10 @@ function list_opts_modify(list_index, opt_ex, opt_inc)
     local listIDfound = table.itemid(rules, list)
     if util.table.hasitem(opt_inc, "Enabled") then
         if not listIDfound then
-            --table.insert(rules, list)
             load(false, list.title)
         end
     elseif util.table.hasitem(opt_inc, "Disabled") then
-        if listIDfound then
-            table.remove(rules, listIDfound)
-        end
+        rules[list.title] = nil
     end
     
     list.opts = opts
@@ -523,7 +522,7 @@ chrome.add("adblock/", function (view, uri)
     end
     
     local rulescount = { black = 0, white = 0 }
-    for _, list in ipairs(rules) do
+    for _, list in pairs(rules) do
         if list.black and list.white then
             rulescount.black, rulescount.white = rulescount.black + list.black, rulescount.white + list.white
         end

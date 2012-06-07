@@ -241,7 +241,7 @@ parse_abpfilterlist = function (filename)
         -- Add everything else to blacklist
         else
             pat = abp_to_pattern(line)
-            if pat and pat ~= "^http:" then
+            if pat and pat ~= "^http:" and pat ~= ".*" then
                 table.insert(black, pat)
             end
         end

@@ -373,6 +373,7 @@ end
 -- @param opt_ex Options to exclude
 -- @param opt_inc Options to include
 function list_opts_modify(list_index, opt_ex, opt_inc)
+    assert( simple_mode == false, "adblock list management: not supported in simple mode" )
     assert(type(list_index) == "number", "list options modify: invalid list index")
     assert(list_index > 0, "list options modify: index has to be > 0")
     if not opt_ex then opt_ex = {} end
@@ -523,7 +524,7 @@ chrome.add("adblock/", function (view, uri)
     end
     
     local rulescount = { black = 0, white = 0 }
-    for _, list in ipairs(rules) do
+    for _, list in pairs(rules) do
         if list.black and list.white then
             rulescount.black, rulescount.white = rulescount.black + list.black, rulescount.white + list.white
         end

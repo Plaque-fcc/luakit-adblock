@@ -329,7 +329,7 @@ match = function (uri, signame)
         end
     end
     
-    -- Test against each list's rules
+    -- Test against each list's whitelist rules first
     for _, list in pairs(rules) do
         -- Check for a match to whitelist
         for _, pattern in ipairs(list.whitelist or {}) do
@@ -338,7 +338,10 @@ match = function (uri, signame)
                 return true
             end
         end
-
+    end
+    
+    -- Test against each list's blacklist rules
+    for _, list in pairs(rules) do
         -- Check for a match to blacklist
         for _, pattern in ipairs(list.blacklist or {}) do
             if string.match(uri, pattern) then

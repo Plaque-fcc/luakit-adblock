@@ -1,5 +1,5 @@
 ------------------------------------------------------------------------
--- Simple URI-based content filter                                    --
+-- Simple URI-based content filter v0.3.1a                            --
 -- (C) 2010 Chris van Dijk (quigybo) <quigybo@hotmail.com>            --
 -- (C) 2010 Mason Larobina (mason-l) <mason.larobina@gmail.com>       --
 -- © 2012 Plaque FCC <Reslayer@ya.ru>                                 --
@@ -214,15 +214,24 @@ abp_to_pattern = function (s)
     return s
 end
 
+add_unique_cached = function (pattern, tab, cache_tab)
+    if cache_tab[pattern] then
+        return false
+    else
+        cache_tab[pattern], tab[pattern] = pattern, pattern
+        return true
+    end
+end
+
 -- Parses an Adblock Plus compatible filter list
-parse_abpfilterlist = function (filename)
+parse_abpfilterlist = function (filename, cache)
     if os.exists(filename) then
         info("adblock: loading filterlist %s", filename)
     else
         info("adblock: error loading filter list (%s: No such file or directory)", filename)
     end
     local pat
-    local white, black = {}, {}
+    local white, black, wlen, blen = {}, {}, 0, 0
     for line in io.lines(filename) do
         -- Ignore comments, header and blank lines
         if line:match("^[![]") or line:match("^$") then
@@ -235,19 +244,25 @@ parse_abpfilterlist = function (filename)
         elseif line:match("^@@") then
             pat = abp_to_pattern(string.sub(line, 3))
             if pat and pat ~= "^http://" then
-                table.insert(white, pat)
+                if add_unique_cached(pat, white, cache.white) then
+                    wlen = wlen + 1
+                end
+                -- table.insert(white, pat)
             end
 
         -- Add everything else to blacklist
         else
             pat = abp_to_pattern(line)
             if pat and pat ~= "^http:" and pat ~= ".*" then
-                table.insert(black, pat)
+                if add_unique_cached(pat, black, cache.black) then
+                    blen = blen + 1
+                end
+                -- table.insert(black, pat)
             end
         end
     end
 
-    return white, black
+    return white, black, wlen, blen
 end
 
 -- Refresh open filters views (if any)
@@ -293,8 +308,12 @@ load = function (reload, single_list)
     else
         filterfiles_loading = filterfiles
     end
+    local rules_cache = {
+        black = {},
+        white = {}
+    } -- This cache should let us avoid unnecessary filters duplication.
     for _, filename in ipairs(filterfiles_loading) do
-        local white, black = parse_abpfilterlist(filters_dir .. filename)
+        local white, black, wlen, blen = parse_abpfilterlist(filters_dir .. filename, rules_cache)
         local list = {}
         if not simple_mode then
             list = subscriptions[filename]
@@ -307,7 +326,7 @@ load = function (reload, single_list)
         if not util.table.hasitem(rules, list) then
             rules[filename] = list
         end
-        list.title, list.white, list.black = filename, table.maxn(white) or 0, table.maxn(black) or 0
+        list.title, list.white, list.black = filename, wlen or 0, blen or 0
         list.whitelist, list.blacklist = white or {}, black or {}
     end
     
@@ -332,7 +351,7 @@ match = function (uri, signame)
     -- Test against each list's whitelist rules first
     for _, list in pairs(rules) do
         -- Check for a match to whitelist
-        for _, pattern in ipairs(list.whitelist or {}) do
+        for _, pattern in pairs(list.whitelist or {}) do
             if string.match(uri, pattern) then
                 info("adblock: allowing %q as pattern %q matched to uri %s", signame, pattern, uri)
                 return true
@@ -343,7 +362,7 @@ match = function (uri, signame)
     -- Test against each list's blacklist rules
     for _, list in pairs(rules) do
         -- Check for a match to blacklist
-        for _, pattern in ipairs(list.blacklist or {}) do
+        for _, pattern in pairs(list.blacklist or {}) do
             if string.match(uri, pattern) then
                 info("adblock: blocking %q as pattern %q matched to uri %s", signame, pattern, uri)
                 return false

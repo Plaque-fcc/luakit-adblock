@@ -1,9 +1,9 @@
 #!/bin/bash
 
-[[ -z "$XDG_DATA_HOME" ]] && DATADIR="$HOME/.local/share" || DATADIR="XDG_DATA_HOME"
+[[ -z "$XDG_DATA_HOME" ]] && DATADIR="$HOME/.local/share" || DATADIR="$XDG_DATA_HOME"
 
 # look for adblock directory or fallback
-[[ -d $DATADIR/luakit/adblock/ ]] && cd $DATADIR/luakit/adblock/ || cd $DATADIR/luakit/
+[[ -d "$DATADIR/luakit/adblock/" ]] && cd "$DATADIR/luakit/adblock/" || cd "$DATADIR/luakit/"
 
 # backup the old list
 [[ -f easylist.txt ]] && cp -p easylist.txt easylist.txt.b

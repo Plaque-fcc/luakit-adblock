@@ -214,11 +214,12 @@ abp_to_pattern = function (s)
     return s
 end
 
+
 add_unique_cached = function (pattern, tab, cache_tab)
     if cache_tab[pattern] then
         return false
     else
-        cache_tab[pattern], tab[pattern] = pattern, pattern
+        cache_tab[pattern], tab[pattern] = true, pattern
         return true
     end
 end
@@ -312,6 +313,7 @@ load = function (reload, single_list)
         black = {},
         white = {}
     } -- This cache should let us avoid unnecessary filters duplication.
+    
     for _, filename in ipairs(filterfiles_loading) do
         local white, black, wlen, blen = parse_abpfilterlist(filters_dir .. filename, rules_cache)
         local list = {}
@@ -330,6 +332,8 @@ load = function (reload, single_list)
         list.whitelist, list.blacklist = white or {}, black or {}
     end
     
+    rules_cache.white, rules_cache.black = nil, nil
+    rules_cache = nil
     refresh_views()
 end
 

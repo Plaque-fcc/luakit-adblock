@@ -1,6 +1,9 @@
 luakit-adblock
 ==============
 
+Moved [here](https://github.com/mason-larobina/luakit-plugins/), so follow up!
+
+
 AdBlock for luakit browser.
 
 Origin: https://github.com/quigybo/luakit/

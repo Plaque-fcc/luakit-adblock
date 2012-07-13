@@ -13,7 +13,7 @@ local table     = table
 local window    = window
 
 
-module("adblock.chrome")
+module("adblock_chrome")
 
 -- Templates
 header_template         = [==[<div class="header"><h2>AdBlock module: {state}</h2><br>AdBlock is in <b>{mode}</b> mode.{rules}</div><hr>]==]
@@ -96,6 +96,9 @@ function refresh_views()
     end
 end
 
+-- Enable adblock to refresh this chrome view.
+adblock.refresh_views = refresh_views
+
 -- URI of the chrome page
 chrome_page    = "luakit://adblock/"
 
@@ -106,7 +109,7 @@ chrome.add("adblock", function (view, meta)
     -- relation between a given tag and a list of subscriptions with that tag.
     local opts = {}
     local id = 0
-    for _, list in pairs(subscriptions) do
+    for _, list in pairs(adblock.subscriptions) do
         id = id + 1
         list['id'] = id
         for _, opt in ipairs(list.opts) do
@@ -148,7 +151,7 @@ chrome.add("adblock", function (view, meta)
     end
     
     local rulescount = { black = 0, white = 0 }
-    for _, list in pairs(rules) do
+    for _, list in pairs(adblock.rules) do
         if list.black and list.white then
             rulescount.black, rulescount.white = rulescount.black + list.black, rulescount.white + list.white
         end
@@ -160,8 +163,8 @@ chrome.add("adblock", function (view, meta)
     end
     -- Fill the header
     local header_subs = {
-        state = state(),
-        mode  = mode(),
+        state = adblock.state(),
+        mode  = adblock.mode(),
         rules = html_rules,
     }
     local html_page_header = string.gsub(header_template, "{(%w+)}", header_subs)

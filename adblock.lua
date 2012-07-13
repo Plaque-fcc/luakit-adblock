@@ -34,6 +34,7 @@ local add_binds, add_cmds = add_binds, add_cmds
 local lfs       = require("lfs")
 local window    = window
 
+
 module("adblock")
 
 --- Module global variables
@@ -55,11 +56,9 @@ rules = {}
 -- Return true or false to allow or block respectively, nil to continue matching
 local filterfuncs = {}
 
--- Wrap around adblock.chrome.refresh_views()
+-- Fitting for adblock.chrome.refresh_views()
 refresh_views = function()
-    if adblock.chrome then
-        adblock.chrome.refresh_views()
-    end
+    -- Dummy.
 end
 
 -- Enable or disable filtering

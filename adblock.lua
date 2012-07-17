@@ -118,46 +118,72 @@ function detect_files()
     return
 end
 
+local function get_abp_opts(s)
+    local opts = {}
+    local pos = string.find(s, "%$")
+    if pos then
+        local op = string.sub(s, pos+1)
+        s = string.sub(s, 1, pos-1)
+        for key in string.gmatch(op, "[^,]+") do
+            local val
+            local pos = string.find(key, "=")
+            if pos then
+                val = string.sub(key, pos+1)
+                key = string.sub(key, 1, pos-1)
+            end
+            if key == "domain" and val then
+                local domains = {}
+                for v in string.gmatch(val, "[^|]+") do
+                    table.insert(domains, v)
+                end
+                if #domains > 0 then opts["domain"] = domains end
+            else
+                opts["unknow"] = true
+            end
+        end
+    end
+    return s, opts
+end
+
 -- Convert Adblock Plus filter description to lua string pattern
 -- See http://adblockplus.org/en/filters for more information
 abp_to_pattern = function (s)
     -- Strip filter options
     local opts
-    local pos = string.find(s, "%$")
-    if pos then
-        s, opts = string.sub(s, 0, pos-1), string.sub(s, pos+1)
+    s, opts = get_abp_opts(s)
+    if opts and opts.unknow == true then return nil end -- Skip rules with unknown options
+
+    if string.len(s) > 0 then
+        -- Protect magic characters (^$()%.[]*+-?) not used by ABP (^$()[]*)
+        s = string.gsub(s, "([%%%.%+%-%?])", "%%%1")
+
+        -- Wildcards are globbing
+        s = string.gsub(s, "%*", "%.%*")
+
+        -- Caret is separator (anything but a letter, a digit, or one of the following:Â - . %)
+        s = string.gsub(s, "%^", "[^%%w%%-%%.%%%%]")
+
+        -- Double pipe is domain anchor (beginning only)
+        -- Unfortunately "||example.com" will also match "wexample.com" (lua doesn't do grouping)
+        s = string.gsub(s, "^||", "^https?://[^/]*%%.?")
+
+        -- Pipe is anchor
+        s = string.gsub(s, "^|", "%^")
+        s = string.gsub(s, "|$", "%$")
+
+        -- Convert to lowercase ($match-case option is not honoured)
+        s = string.lower(s)
     end
 
-    -- Protect magic characters (^$()%.[]*+-?) not used by ABP (^$()[]*)
-    s = string.gsub(s, "([%%%.%+%-%?])", "%%%1")
-
-    -- Wildcards are globbing
-    s = string.gsub(s, "%*", "%.%*")
-
-    -- Caret is separator (anything but a letter, a digit, or one of the following:Â - . %)
-    s = string.gsub(s, "%^", "[^%%w%%-%%.%%%%]")
-
-    -- Double pipe is domain anchor (beginning only)
-    -- Unfortunately "||example.com" will also match "wexample.com" (lua doesn't do grouping)
-    s = string.gsub(s, "^||", "^https?://w?w?w?%%d?%.?")
-
-    -- Pipe is anchor
-    s = string.gsub(s, "^|", "%^")
-    s = string.gsub(s, "|$", "%$")
-
-    -- Convert to lowercase ($match-case option is not honoured)
-    s = string.lower(s)
-    
-
-    return s
+    return s, opts
 end
 
-
-add_unique_cached = function (pattern, tab, cache_tab)
+add_unique_cached = function (pattern, opts, tab, cache_tab)
     if cache_tab[pattern] then
         return false
     else
-        cache_tab[pattern], tab[pattern] = true, pattern
+        --cache_tab[pattern], tab[pattern] = true, pattern
+        cache_tab[pattern], tab[pattern] = true, opts
         return true
     end
 end
@@ -169,8 +195,11 @@ parse_abpfilterlist = function (filename, cache)
     else
         info("adblock: error loading filter list (%s: No such file or directory)", filename)
     end
-    local pat
-    local white, black, wlen, blen = {}, {}, 0, 0
+    --***
+    --local f = io.open(filename .. "~", "w")
+    --***
+    local pat, opts
+    local white, black, wlen, blen, icnt = {}, {}, 0, 0, 0
     for line in io.lines(filename) do
         -- Ignore comments, header and blank lines
         if line:match("^[![]") or line:match("^$") then
@@ -178,30 +207,48 @@ parse_abpfilterlist = function (filename, cache)
 
         -- Ignore element hiding
         elseif line:match("#") then
+            --icnt = icnt + 1
 
         -- Check for exceptions (whitelist)
         elseif line:match("^@@") then
-            pat = abp_to_pattern(string.sub(line, 3))
+            pat, opts = abp_to_pattern(string.sub(line, 3))
             if pat and pat ~= "^http://" then
-                if add_unique_cached(pat, white, cache.white) then
+                if add_unique_cached(pat, opts, white, cache.white) then
                     wlen = wlen + 1
+                    --***
+                    --f:write("W " .. pat .. "\n")
+                    --***
+                else
+                    icnt = icnt + 1
                 end
                 -- table.insert(white, pat)
+            else
+                icnt = icnt + 1
             end
 
         -- Add everything else to blacklist
         else
-            pat = abp_to_pattern(line)
+            pat, opts = abp_to_pattern(line)
             if pat and pat ~= "^http:" and pat ~= ".*" then
-                if add_unique_cached(pat, black, cache.black) then
+                if add_unique_cached(pat, opts, black, cache.black) then
                     blen = blen + 1
+                    --***
+                    --f:write("B " .. pat .. "\n")
+                    --***
+                else
+                    icnt = icnt + 1
                 end
                 -- table.insert(black, pat)
+            else
+                icnt = icnt + 1
             end
         end
     end
+    --***
+    --f:close()
+    --***
 
-    return white, black, wlen, blen
+    return white, black, wlen, blen, icnt
 end
 
 -- Load filter list files
@@ -242,7 +289,7 @@ load = function (reload, single_list)
     } -- This cache should let us avoid unnecessary filters duplication.
     
     for _, filename in ipairs(filterfiles_loading) do
-        local white, black, wlen, blen = parse_abpfilterlist(filters_dir .. filename, rules_cache)
+        local white, black, wlen, blen, icnt = parse_abpfilterlist(filters_dir .. filename, rules_cache)
         local list = {}
         if not simple_mode then
             list = subscriptions[filename]
@@ -255,7 +302,7 @@ load = function (reload, single_list)
         if not util.table.hasitem(rules, list) then
             rules[filename] = list
         end
-        list.title, list.white, list.black = filename, wlen or 0, blen or 0
+        list.title, list.white, list.black, list.ignored = filename, wlen or 0, blen or 0, icnt or 0
         list.whitelist, list.blacklist = white or {}, black or {}
     end
     
@@ -264,11 +311,42 @@ load = function (reload, single_list)
     refresh_views()
 end
 
+local function domain_match(domain, opts)
+    local res = false
+    local cnt = 0
+    local dlist = opts["domain"]
+    if dlist then
+        for _, s in pairs(dlist) do
+            if string.len(s) > 0 then
+                if string.sub(s, 1, 1) == "~" then
+                    if domain == string.sub(s, 2) then return false end
+                else
+                    cnt = cnt + 1
+                    if not res and domain == s then res = true end
+                end
+            end
+        end
+    end
+    return cnt == 0 or res
+end
+
+local function domain_from_uri(uri)
+    local domain = (uri and string.match(string.lower(uri), "^%a+://([^/]*)/?"))
+    -- Strip leading www. www2. etc
+    domain = string.match(domain or "", "^www%d?%.(.+)") or domain
+    return domain or ""
+end
+
 -- Tests URI against user-defined filter functions, then whitelist, then blacklist
-match = function (uri, signame)
+match = function (uri, signame, page_uri)
     -- Matching is not case sensitive
     uri = string.lower(uri)
+
     signame = signame or ""
+
+    local domain
+    if signame ~= "navigation-request" then domain = domain_from_uri(page_uri)
+    else domain = domain_from_uri(uri) end
 
     -- Test uri against filterfuncs
     for _, func in ipairs(filterfuncs) do
@@ -282,8 +360,8 @@ match = function (uri, signame)
     -- Test against each list's whitelist rules first
     for _, list in pairs(rules) do
         -- Check for a match to whitelist
-        for _, pattern in pairs(list.whitelist or {}) do
-            if string.match(uri, pattern) then
+        for pattern, opts in pairs(list.whitelist or {}) do
+            if domain_match(domain, opts) and string.match(uri, pattern) then
                 info("adblock: allowing %q as pattern %q matched to uri %s", signame, pattern, uri)
                 return true
             end
@@ -293,8 +371,8 @@ match = function (uri, signame)
     -- Test against each list's blacklist rules
     for _, list in pairs(rules) do
         -- Check for a match to blacklist
-        for _, pattern in pairs(list.blacklist or {}) do
-            if string.match(uri, pattern) then
+        for pattern, opts in pairs(list.blacklist or {}) do
+            if domain_match(domain, opts) and string.match(uri, pattern) then
                 info("adblock: blocking %q as pattern %q matched to uri %s", signame, pattern, uri)
                 return false
             end
@@ -304,7 +382,7 @@ end
 
 -- Direct requests to match function
 filter = function (v, uri, signame)
-    if enabled then return match(uri, signame or "") end
+    if enabled then return match(uri, signame or "", v.uri) end
 end
 
 function table.itemid(t, item)

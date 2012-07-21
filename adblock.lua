@@ -131,12 +131,21 @@ local function get_abp_opts(s)
                 val = string.sub(key, pos+1)
                 key = string.sub(key, 1, pos-1)
             end
+
+            local negative = false
+            if string.sub(key, 1, 1) == "~" then
+                negative = true
+                key = string.sub(key, 2)
+            end
+
             if key == "domain" and val then
                 local domains = {}
                 for v in string.gmatch(val, "[^|]+") do
                     table.insert(domains, v)
                 end
                 if #domains > 0 then opts["domain"] = domains end
+            elseif key == "third-party" then
+                opts["third-party"] = not negative
             else
                 opts["unknow"] = true
             end
@@ -330,6 +339,15 @@ local function domain_match(domain, opts)
     return cnt == 0 or res
 end
 
+local function third_party_match(page_domain, domain2, opts)
+    local thp = opts["third-party"]
+    if thp ~= nul then
+        if thp == true then return domain1 ~= domain2 end
+        return domain1 == domain2
+    end
+    return true
+end
+
 local function domain_from_uri(uri)
     local domain = (uri and string.match(string.lower(uri), "^%a+://([^/]*)/?"))
     -- Strip leading www. www2. etc
@@ -344,9 +362,14 @@ match = function (uri, signame, page_uri)
 
     signame = signame or ""
 
-    local domain
-    if signame ~= "navigation-request" then domain = domain_from_uri(page_uri)
-    else domain = domain_from_uri(uri) end
+    local page_domain, uri_domain
+    if signame ~= "navigation-request" then
+        page_domain = domain_from_uri(page_uri)
+        uri_domain = domain_from_uri(uri)
+    else
+        page_domain = domain_from_uri(uri)
+        uri_domain = page_uri
+    end
 
     -- Test uri against filterfuncs
     for _, func in ipairs(filterfuncs) do
@@ -361,9 +384,11 @@ match = function (uri, signame, page_uri)
     for _, list in pairs(rules) do
         -- Check for a match to whitelist
         for pattern, opts in pairs(list.whitelist or {}) do
-            if domain_match(domain, opts) and string.match(uri, pattern) then
-                info("adblock: allowing %q as pattern %q matched to uri %s", signame, pattern, uri)
-                return true
+            if third_party_match(page_domain, uri_domain, opts) then
+                if domain_match(page_domain, opts) and string.match(uri, pattern) then
+                    info("adblock: allowing %q as pattern %q matched to uri %s", signame, pattern, uri)
+                    return true
+                end
             end
         end
     end
@@ -372,9 +397,11 @@ match = function (uri, signame, page_uri)
     for _, list in pairs(rules) do
         -- Check for a match to blacklist
         for pattern, opts in pairs(list.blacklist or {}) do
-            if domain_match(domain, opts) and string.match(uri, pattern) then
-                info("adblock: blocking %q as pattern %q matched to uri %s", signame, pattern, uri)
-                return false
+            if third_party_match(page_domain, uri_domain, opts) then
+                if domain_match(page_domain, opts) and string.match(uri, pattern) then
+                    info("adblock: blocking %q as pattern %q matched to uri %s", signame, pattern, uri)
+                    return false
+                end
             end
         end
     end

@@ -397,7 +397,7 @@ end
 
 -- Connect signals to all webview widgets on creation
 webview.init_funcs.adblock_signals = function (view, w)
-    view:add_signal("navigation-request",        function (v, uri) return filter(v, uri, "navigation-request")        end)
+    --view:add_signal("navigation-request",        function (v, uri) return filter(v, uri, "navigation-request")        end)
     view:add_signal("resource-request-starting", function (v, uri) return filter(v, uri, "resource-request-starting") end)
 end
 

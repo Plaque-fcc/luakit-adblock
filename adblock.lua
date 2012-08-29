@@ -147,7 +147,7 @@ local function get_abp_opts(s)
             elseif key == "third-party" then
                 opts["third-party"] = not negative
             else
-                opts["unknow"] = true
+                opts["unknown"] = true
             end
         end
     end
@@ -160,7 +160,7 @@ abp_to_pattern = function (s)
     -- Strip filter options
     local opts
     s, opts = get_abp_opts(s)
-    if opts and opts.unknow == true then return nil end -- Skip rules with unknown options
+    if opts and opts.unknown == true then return nil end -- Skip rules with unknown options
 
     if string.len(s) > 0 then
         -- Protect magic characters (^$()%.[]*+-?) not used by ABP (^$()[]*)
